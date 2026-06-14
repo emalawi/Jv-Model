@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zeterx JS Orchestrator</title>
+    <title>Gini AI</title>
     <style>
-        /* White terminal appearance */
         body {
             background-color: #ffffff;
             color: #333333;
-            font-family: 'Courier New', Courier, monospace; 
+            font-family: 'Courier New', Courier, monospace;
             padding: 20px;
             margin: 0;
             display: flex;
@@ -22,6 +21,8 @@
             padding-bottom: 10px;
             margin-bottom: 20px;
         }
+        .header h2 { margin: 0; font-size: 1.2rem; }
+        .header small { color: #888; }
         .chat-box {
             flex-grow: 1;
             overflow-y: auto;
@@ -40,7 +41,9 @@
             font-family: 'Courier New', Courier, monospace;
             border: 1px solid #ccc;
             outline: none;
+            font-size: 0.9rem;
         }
+        input[type="text"]:focus { border-color: #333; }
         button {
             padding: 12px 24px;
             background-color: #333;
@@ -50,75 +53,228 @@
             font-family: 'Courier New', Courier, monospace;
             font-weight: bold;
         }
-        button:active {
-            background-color: #555;
+        button:hover { background-color: #444; }
+        button:active { background-color: #555; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .message { margin-bottom: 20px; animation: fadeUp 0.25s ease; }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0); }
         }
-        .message { margin-bottom: 20px; }
-        .user-msg { color: #0056b3; }
-        .ai-msg { color: #2e7d32; white-space: pre-wrap; }
+        .msg-label { font-size: 0.75rem; font-weight: bold; margin-bottom: 4px; }
+        .user-label { color: #0056b3; }
+        .ai-label   { color: #2e7d32; }
+        .err-label  { color: #c0392b; }
+        .msg-body {
+            white-space: pre-wrap;
+            word-break: break-word;
+            line-height: 1.7;
+            font-size: 0.9rem;
+            position: relative;
+            padding-right: 60px;
+        }
+        .msg-body pre {
+            background: #f4f4f4;
+            border: 1px solid #ddd;
+            border-left: 3px solid #333;
+            padding: 10px 12px;
+            margin: 8px 0;
+            overflow-x: auto;
+            white-space: pre;
+            font-size: 0.85rem;
+        }
+        .copy-btn {
+            position: absolute;
+            top: 0; right: 0;
+            background: #fff;
+            border: 1px solid #ccc;
+            color: #555;
+            font-family: 'Courier New', monospace;
+            font-size: 0.7rem;
+            padding: 3px 8px;
+            cursor: pointer;
+        }
+        .copy-btn:hover { background: #f0f0f0; color: #000; }
+        .copy-btn.copied { color: #2e7d32; border-color: #2e7d32; }
+        .thinking { color: #888; font-size: 0.85rem; }
+        .thinking span {
+            display: inline-block;
+            animation: bounce 1.2s infinite;
+        }
+        .thinking span:nth-child(2) { animation-delay: 0.2s; }
+        .thinking span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce {
+            0%, 80%, 100% { transform: translateY(0); }
+            40%            { transform: translateY(-4px); }
+        }
+        .typing-cursor::after {
+            content: '|';
+            color: #333;
+            animation: blink 0.6s step-end infinite;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0; }
+        }
     </style>
 </head>
 <body>
+
     <div class="header">
-        <h2>Zeterx JS Orchestrator</h2>
-        <small>Developed by Emalawi19 | Core API Gateway: ONLINE</small>
+        <h2>Gini AI</h2>
+        <small>Developed by Emalawi19 | Founded by Prof. Roosevelt Chinkwende | Online</small>
     </div>
-    
+
     <div class="chat-box" id="chatBox"></div>
-    
+
     <div class="input-area">
-        <input type="text" id="promptInput" placeholder="Enter coding prompt (e.g., '// JavaScript function to reverse an array')...">
-        <button onclick="generateCode()">Execute</button>
+        <input type="text" id="promptInput" placeholder="Ask Gini AI...">
+        <button id="sendBtn" onclick="sendMessage()">Send</button>
     </div>
 
     <script>
-        // Your exact live Hugging Face Space backend endpoint
-        const API_URL = "https://emalawi19-js-coder-backend.hf.space/generate"; 
+        const API_URL = "https://emalawi19-js-coder-backend.hf.space/generate";
 
-        async function generateCode() {
-            const inputElement = document.getElementById('promptInput');
-            const chatBox = document.getElementById('chatBox');
-            const prompt = inputElement.value.trim();
+        function escapeHTML(str) {
+            return str
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
 
+        function formatReply(text) {
+            const parts = text.split(/(```[\s\S]*?```)/g);
+            return parts.map(part => {
+                if (part.startsWith('```') && part.endsWith('```')) {
+                    const inner = part.slice(3, -3);
+                    const nl = inner.indexOf('\n');
+                    const code = nl !== -1 ? inner.slice(nl + 1) : inner;
+                    return `<pre>${escapeHTML(code)}</pre>`;
+                }
+                return escapeHTML(part);
+            }).join('');
+        }
+
+        function chatBox() { return document.getElementById('chatBox'); }
+        function scrollBottom() { const cb = chatBox(); cb.scrollTop = cb.scrollHeight; }
+
+        function appendUser(text) {
+            const div = document.createElement('div');
+            div.className = 'message';
+            div.innerHTML = `<div class="msg-label user-label">> You:</div>
+                             <div class="msg-body">${escapeHTML(text)}</div>`;
+            chatBox().appendChild(div);
+            scrollBottom();
+        }
+
+        function appendThinking() {
+            const div = document.createElement('div');
+            div.className = 'message';
+            div.innerHTML = `<div class="msg-label ai-label">> Gini AI:</div>
+                             <div class="msg-body thinking" id="thinkingBody">
+                                 <span>.</span><span>.</span><span>.</span>
+                             </div>`;
+            chatBox().appendChild(div);
+            scrollBottom();
+            return div;
+        }
+
+        function animateReply(container, htmlContent, rawText) {
+            container.classList.add('typing-cursor');
+            container.innerHTML = '';
+
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'copy-btn';
+            copyBtn.textContent = 'Copy';
+            copyBtn.style.display = 'none';
+            copyBtn.onclick = () => {
+                navigator.clipboard.writeText(rawText).then(() => {
+                    copyBtn.textContent = 'Copied!';
+                    copyBtn.classList.add('copied');
+                    setTimeout(() => {
+                        copyBtn.textContent = 'Copy';
+                        copyBtn.classList.remove('copied');
+                    }, 2000);
+                });
+            };
+            container.appendChild(copyBtn);
+
+            const textNode = document.createElement('span');
+            container.appendChild(textNode);
+
+            let i = 0;
+            function typeChar() {
+                if (i < rawText.length) {
+                    textNode.textContent += rawText[i++];
+                    scrollBottom();
+                    setTimeout(typeChar, 10);
+                } else {
+                    container.classList.remove('typing-cursor');
+                    container.innerHTML = '';
+                    container.appendChild(copyBtn);
+                    const content = document.createElement('span');
+                    content.innerHTML = htmlContent;
+                    container.appendChild(content);
+                    copyBtn.style.display = '';
+                    scrollBottom();
+                }
+            }
+            typeChar();
+        }
+
+        function appendError(msg) {
+            const div = document.createElement('div');
+            div.className = 'message';
+            div.innerHTML = `<div class="msg-label err-label">> Error:</div>
+                             <div class="msg-body">${escapeHTML(msg)}</div>`;
+            chatBox().appendChild(div);
+            scrollBottom();
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('promptInput');
+            const btn   = document.getElementById('sendBtn');
+            const prompt = input.value.trim();
             if (!prompt) return;
 
-            // 1. Display User Prompt
-            chatBox.innerHTML += `<div class="message user-msg"><strong>> You:</strong><br>${prompt}</div>`;
-            inputElement.value = ''; 
+            input.value = '';
+            btn.disabled = true;
 
-            // 2. Display Loading State
-            const loadingId = 'loading-' + Date.now();
-            chatBox.innerHTML += `<div class="message ai-msg" id="${loadingId}"><strong>> Model:</strong> Processing via HF Server...</div>`;
-            chatBox.scrollTop = chatBox.scrollHeight;
+            appendUser(prompt);
+            const thinkingEl   = appendThinking();
+            const thinkingBody = thinkingEl.querySelector('#thinkingBody');
 
             try {
-                // 3. Send POST request to your live Hugging Face Space
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: prompt })
+                    body: JSON.stringify({ prompt })
                 });
 
                 const data = await response.json();
-                
                 if (data.error) throw new Error(data.error);
 
-                // 4. Output the generated code from the backend
-                document.getElementById(loadingId).innerHTML = `<strong>> Model:</strong><br>${data.result}`;
-            } catch (error) {
-                document.getElementById(loadingId).innerHTML = `<strong>> System Error:</strong> ${error.message}`;
+                const rawText   = data.result || '';
+                const formatted = formatReply(rawText);
+
+                thinkingBody.className = 'msg-body';
+                thinkingBody.removeAttribute('id');
+                animateReply(thinkingBody, formatted, rawText);
+
+            } catch (err) {
+                thinkingEl.remove();
+                appendError(err.message || 'Connection failed. Please try again.');
             }
-            
-            chatBox.scrollTop = chatBox.scrollHeight;
+
+            btn.disabled = false;
+            input.focus();
         }
 
-        // Handle mobile keyboard "Enter" key press
-        document.getElementById("promptInput").addEventListener("keypress", function(event) {
-            if (event.key === "Enter") {
-                event.preventDefault();
-                generateCode();
-            }
+        document.getElementById('promptInput').addEventListener('keypress', e => {
+            if (e.key === 'Enter') { e.preventDefault(); sendMessage(); }
         });
     </script>
 </body>
-  </html>
+</html>
