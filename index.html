@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zeterx JS Orchestrator</title>
+    <style>
+        /* White terminal appearance */
+        body {
+            background-color: #ffffff;
+            color: #333333;
+            font-family: 'Courier New', Courier, monospace; 
+            padding: 20px;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+        .header {
+            border-bottom: 2px solid #ccc;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .chat-box {
+            flex-grow: 1;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 15px;
+            background-color: #fafafa;
+        }
+        .input-area {
+            display: flex;
+            margin-top: 15px;
+            gap: 10px;
+        }
+        input[type="text"] {
+            flex-grow: 1;
+            padding: 12px;
+            font-family: 'Courier New', Courier, monospace;
+            border: 1px solid #ccc;
+            outline: none;
+        }
+        button {
+            padding: 12px 24px;
+            background-color: #333;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+        }
+        button:active {
+            background-color: #555;
+        }
+        .message { margin-bottom: 20px; }
+        .user-msg { color: #0056b3; }
+        .ai-msg { color: #2e7d32; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>Zeterx JS Orchestrator</h2>
+        <small>Developed by Emalawi19 | Core API Gateway: ONLINE</small>
+    </div>
+    
+    <div class="chat-box" id="chatBox"></div>
+    
+    <div class="input-area">
+        <input type="text" id="promptInput" placeholder="Enter coding prompt (e.g., '// JavaScript function to reverse an array')...">
+        <button onclick="generateCode()">Execute</button>
+    </div>
+
+    <script>
+        // Your exact live Hugging Face Space backend endpoint
+        const API_URL = "https://emalawi19-js-coder-backend.hf.space/generate"; 
+
+        async function generateCode() {
+            const inputElement = document.getElementById('promptInput');
+            const chatBox = document.getElementById('chatBox');
+            const prompt = inputElement.value.trim();
+
+            if (!prompt) return;
+
+            // 1. Display User Prompt
+            chatBox.innerHTML += `<div class="message user-msg"><strong>> You:</strong><br>${prompt}</div>`;
+            inputElement.value = ''; 
+
+            // 2. Display Loading State
+            const loadingId = 'loading-' + Date.now();
+            chatBox.innerHTML += `<div class="message ai-msg" id="${loadingId}"><strong>> Model:</strong> Processing via HF Server...</div>`;
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            try {
+                // 3. Send POST request to your live Hugging Face Space
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: prompt })
+                });
+
+                const data = await response.json();
+                
+                if (data.error) throw new Error(data.error);
+
+                // 4. Output the generated code from the backend
+                document.getElementById(loadingId).innerHTML = `<strong>> Model:</strong><br>${data.result}`;
+            } catch (error) {
+                document.getElementById(loadingId).innerHTML = `<strong>> System Error:</strong> ${error.message}`;
+            }
+            
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // Handle mobile keyboard "Enter" key press
+        document.getElementById("promptInput").addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                generateCode();
+            }
+        });
+    </script>
+</body>
+  </html>
