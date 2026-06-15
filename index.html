@@ -65,6 +65,15 @@
         .user-label { color: #0056b3; }
         .ai-label   { color: #2e7d32; }
         .err-label  { color: #c0392b; }
+        
+        /* New CSS for the response time text */
+        .time-taken {
+            font-weight: normal;
+            font-size: 0.7rem;
+            color: #888;
+            margin-left: 5px;
+        }
+
         .msg-body {
             white-space: pre-wrap;
             word-break: break-word;
@@ -245,6 +254,10 @@
             appendUser(prompt);
             const thinkingEl   = appendThinking();
             const thinkingBody = thinkingEl.querySelector('#thinkingBody');
+            const aiLabel      = thinkingEl.querySelector('.ai-label');
+
+            // Start timing right before the fetch call
+            const startTime = performance.now();
 
             try {
                 const response = await fetch(API_URL, {
@@ -254,6 +267,14 @@
                 });
 
                 const data = await response.json();
+                
+                // End timing right after parsing the response
+                const endTime = performance.now();
+                const timeTaken = ((endTime - startTime) / 1000).toFixed(2); // Convert ms to seconds
+                
+                // Update the UI label with the time taken
+                aiLabel.innerHTML = `> Gini AI <span class="time-taken">[${timeTaken}s]</span>:`;
+
                 if (data.error) throw new Error(data.error);
 
                 const rawText   = data.result || '';
