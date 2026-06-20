@@ -16,11 +16,7 @@
             height: 100vh;
             box-sizing: border-box;
         }
-        .header {
-            border-bottom: 2px solid #ccc;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-        }
+        .header { border-bottom: 2px solid #ccc; padding-bottom: 10px; margin-bottom: 20px; }
         .header h2 { margin: 0; font-size: 1.2rem; }
         .header small { color: #888; }
         .chat-box {
@@ -30,11 +26,7 @@
             padding: 15px;
             background-color: #fafafa;
         }
-        .input-area {
-            display: flex;
-            margin-top: 15px;
-            gap: 10px;
-        }
+        .input-area { display: flex; margin-top: 15px; gap: 10px; }
         input[type="text"] {
             flex-grow: 1;
             padding: 12px;
@@ -65,15 +57,6 @@
         .user-label { color: #0056b3; }
         .ai-label   { color: #2e7d32; }
         .err-label  { color: #c0392b; }
-        
-        /* New CSS for the response time text */
-        .time-taken {
-            font-weight: normal;
-            font-size: 0.7rem;
-            color: #888;
-            margin-left: 5px;
-        }
-
         .msg-body {
             white-space: pre-wrap;
             word-break: break-word;
@@ -106,10 +89,7 @@
         .copy-btn:hover { background: #f0f0f0; color: #000; }
         .copy-btn.copied { color: #2e7d32; border-color: #2e7d32; }
         .thinking { color: #888; font-size: 0.85rem; }
-        .thinking span {
-            display: inline-block;
-            animation: bounce 1.2s infinite;
-        }
+        .thinking span { display: inline-block; animation: bounce 1.2s infinite; }
         .thinking span:nth-child(2) { animation-delay: 0.2s; }
         .thinking span:nth-child(3) { animation-delay: 0.4s; }
         @keyframes bounce {
@@ -146,10 +126,8 @@
 
         function escapeHTML(str) {
             return str
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
                 .replace(/'/g, '&#039;');
         }
 
@@ -166,7 +144,7 @@
             }).join('');
         }
 
-        function chatBox() { return document.getElementById('chatBox'); }
+        function chatBox()     { return document.getElementById('chatBox'); }
         function scrollBottom() { const cb = chatBox(); cb.scrollTop = cb.scrollHeight; }
 
         function appendUser(text) {
@@ -183,21 +161,18 @@
             div.className = 'message';
             div.innerHTML = `<div class="msg-label ai-label">> Gini AI:</div>
                              <div class="msg-body thinking" id="thinkingBody">
-                                 <span>.</span><span>.</span><span>.</span>
+                                <span>.</span><span>.</span><span>.</span>
                              </div>`;
             chatBox().appendChild(div);
             scrollBottom();
             return div;
         }
 
-        function animateReply(container, htmlContent, rawText) {
-            container.classList.add('typing-cursor');
-            container.innerHTML = '';
-
+        function finaliseReply(container, rawText) {
+            const formatted = formatReply(rawText);
             const copyBtn = document.createElement('button');
             copyBtn.className = 'copy-btn';
             copyBtn.textContent = 'Copy';
-            copyBtn.style.display = 'none';
             copyBtn.onclick = () => {
                 navigator.clipboard.writeText(rawText).then(() => {
                     copyBtn.textContent = 'Copied!';
@@ -208,29 +183,13 @@
                     }, 2000);
                 });
             };
+            container.classList.remove('typing-cursor');
+            container.innerHTML = '';
             container.appendChild(copyBtn);
-
-            const textNode = document.createElement('span');
-            container.appendChild(textNode);
-
-            let i = 0;
-            function typeChar() {
-                if (i < rawText.length) {
-                    textNode.textContent += rawText[i++];
-                    scrollBottom();
-                    setTimeout(typeChar, 10);
-                } else {
-                    container.classList.remove('typing-cursor');
-                    container.innerHTML = '';
-                    container.appendChild(copyBtn);
-                    const content = document.createElement('span');
-                    content.innerHTML = htmlContent;
-                    container.appendChild(content);
-                    copyBtn.style.display = '';
-                    scrollBottom();
-                }
-            }
-            typeChar();
+            const content = document.createElement('span');
+            content.innerHTML = formatted;
+            container.appendChild(content);
+            scrollBottom();
         }
 
         function appendError(msg) {
@@ -243,21 +202,26 @@
         }
 
         async function sendMessage() {
-            const input = document.getElementById('promptInput');
-            const btn   = document.getElementById('sendBtn');
+            const input  = document.getElementById('promptInput');
+            const btn    = document.getElementById('sendBtn');
             const prompt = input.value.trim();
             if (!prompt) return;
 
-            input.value = '';
+            input.value  = '';
             btn.disabled = true;
 
             appendUser(prompt);
             const thinkingEl   = appendThinking();
             const thinkingBody = thinkingEl.querySelector('#thinkingBody');
-            const aiLabel      = thinkingEl.querySelector('.ai-label');
 
-            // Start timing right before the fetch call
-            const startTime = performance.now();
+            // Switch from dots to streaming text container
+            thinkingBody.className = 'msg-body typing-cursor';
+            thinkingBody.removeAttribute('id');
+            thinkingBody.innerHTML = '';
+
+            let streamedText = '';
+            const textNode = document.createElement('span');
+            thinkingBody.appendChild(textNode);
 
             try {
                 const response = await fetch(API_URL, {
@@ -266,23 +230,43 @@
                     body: JSON.stringify({ prompt })
                 });
 
-                const data = await response.json();
-                
-                // End timing right after parsing the response
-                const endTime = performance.now();
-                const timeTaken = ((endTime - startTime) / 1000).toFixed(2); // Convert ms to seconds
-                
-                // Update the UI label with the time taken
-                aiLabel.innerHTML = `> Gini AI <span class="time-taken">[${timeTaken}s]</span>:`;
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
 
-                if (data.error) throw new Error(data.error);
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
 
-                const rawText   = data.result || '';
-                const formatted = formatReply(rawText);
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // keep incomplete line in buffer
 
-                thinkingBody.className = 'msg-body';
-                thinkingBody.removeAttribute('id');
-                animateReply(thinkingBody, formatted, rawText);
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        try {
+                            const json = JSON.parse(line.slice(6));
+
+                            if (json.error) {
+                                thinkingEl.remove();
+                                appendError(json.error);
+                                break;
+                            }
+
+                            if (json.chunk) {
+                                // Append new streamed chunk directly to the text node
+                                streamedText += json.chunk;
+                                textNode.textContent = streamedText;
+                                scrollBottom();
+                            }
+
+                            if (json.done) {
+                                // Replace raw streamed text with final formatted version
+                                finaliseReply(thinkingBody, json.result || streamedText);
+                            }
+                        } catch (_) {}
+                    }
+                }
 
             } catch (err) {
                 thinkingEl.remove();
